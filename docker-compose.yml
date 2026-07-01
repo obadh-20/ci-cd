@@ -1,4 +1,5 @@
 services:
+
   frontend:
     image: ghcr.io/obadh-20/frontend:latest
     ports:
