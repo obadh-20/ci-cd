@@ -9,7 +9,7 @@ services:
       - front-tier
 
   backend:
-    image: ghcr.io/obadh-20/backend:latest
+    image: ghcr.io/obadh-200/backend:latest
     ports:
       - "3002:3002"
     env_file:
