@@ -29,9 +29,13 @@ jobs:
           docker build -t ghcr.io/${{ github.repository_owner }}/backend:latest ./trainingAppBackend
           docker push ghcr.io/${{ github.repository_owner }}/backend:latest
 
-      - name: Build frontend image
+      - name: Build frontend image (with env)
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/frontend:latest ./trainingFronend
+          docker build \
+            --build-arg REACT_APP_API_URL=https://devops-2.sociumtech.com \
+            -t ghcr.io/${{ github.repository_owner }}/frontend:latest \
+            ./trainingFronend
+
           docker push ghcr.io/${{ github.repository_owner }}/frontend:latest
 
   deploy:
