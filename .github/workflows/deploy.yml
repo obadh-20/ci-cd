@@ -46,6 +46,6 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /var/www/obadh
+            cd /obadh
             docker compose pull
             docker compose up -d
