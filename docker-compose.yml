@@ -1,10 +1,7 @@
 services:
 
   frontend:
-    build:
-      context: ./trainingFronend
-      args:
-        REACT_APP_API_URL: https://devops-2.sociumtech.com
+    image: ghcr.io/YOUR_USER/frontend:latest
     ports:
       - "3001:80"
     depends_on:
@@ -13,14 +10,11 @@ services:
       - front-tier
 
   backend:
-    build: ./trainingAppBackend
+    image: ghcr.io/YOUR_USER/backend:latest
     ports:
       - "3002:3002"
     env_file:
       - .env
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - front-tier
       - back-tier
@@ -31,12 +25,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./trainingAppBackend/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d taskapp"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - back-tier
     restart: unless-stopped
