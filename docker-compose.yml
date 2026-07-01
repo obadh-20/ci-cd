@@ -1,7 +1,7 @@
 services:
 
   frontend:
-    image: ghcr.io/YOUR_USER/frontend:latest
+    image: ghcr.io/obadh-20/frontend:latest
     ports:
       - "3001:80"
     depends_on:
@@ -10,7 +10,7 @@ services:
       - front-tier
 
   backend:
-    image: ghcr.io/YOUR_USER/backend:latest
+    image: ghcr.io/obadh-20/backend:latest
     ports:
       - "3002:3002"
     env_file:
