@@ -50,6 +50,5 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /root/obadh
-            docker compose pull
-            docker compose up -d
+           cd /root/obadh
+            ./deploy.sh
