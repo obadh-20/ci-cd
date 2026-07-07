@@ -1,18 +1,14 @@
 name: CI/CD Pipeline
-
 on:
   push:
     branches: ["main"]
 
 jobs:
-
   build-and-push:
     runs-on: ubuntu-latest
-
     permissions:
       contents: read
       packages: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,29 +22,44 @@ jobs:
 
       - name: Build backend image
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/backend:latest ./trainingAppBackend
+          docker build \
+            -t ghcr.io/${{ github.repository_owner }}/backend:${{ github.sha }} \
+            -t ghcr.io/${{ github.repository_owner }}/backend:latest \
+            ./trainingAppBackend
+          docker push ghcr.io/${{ github.repository_owner }}/backend:${{ github.sha }}
           docker push ghcr.io/${{ github.repository_owner }}/backend:latest
 
       - name: Build frontend image (with env)
         run: |
           docker build \
             --build-arg REACT_APP_API_URL=https://devops-2.sociumtech.com \
+            -t ghcr.io/${{ github.repository_owner }}/frontend:${{ github.sha }} \
             -t ghcr.io/${{ github.repository_owner }}/frontend:latest \
             ./trainingFronend
-
+          docker push ghcr.io/${{ github.repository_owner }}/frontend:${{ github.sha }}
           docker push ghcr.io/${{ github.repository_owner }}/frontend:latest
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-
     steps:
-      - name: Deploy to server
+      - name: Deploy to Kubernetes over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GITHUB_SHA
           script: |
-           cd /root/obadh
-            ./deploy.sh
+            set -e
+            OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+
+            kubectl set image deployment/backend-api \
+              backend=ghcr.io/${OWNER}/backend:${GITHUB_SHA} \
+              -n backend
+            kubectl rollout status deployment/backend-api -n backend --timeout=120s
+
+            kubectl set image deployment/frontend \
+              frontend=ghcr.io/${OWNER}/frontend:${GITHUB_SHA} \
+              -n frontend
+            kubectl rollout status deployment/frontend -n frontend --timeout=120s
