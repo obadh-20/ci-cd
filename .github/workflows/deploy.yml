@@ -43,23 +43,33 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Kubernetes over SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Configure Kubeconfig
+        uses: azure/k8s-set-context@v3
         with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: GITHUB_SHA
-          script: |
-            set -e
-            OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-
-            kubectl set image deployment/backend-api \
-              backend=ghcr.io/${OWNER}/backend:${GITHUB_SHA} \
-              -n backend
-            kubectl rollout status deployment/backend-api -n backend --timeout=120s
-
-            kubectl set image deployment/frontend \
-              frontend=ghcr.io/${OWNER}/frontend:${GITHUB_SHA} \
-              -n frontend
-            kubectl rollout status deployment/frontend -n frontend --timeout=120s
+          method: kubeconfig
+          kubeconfig: ${{ secrets.DEV_KUBE_CONFIG }}
+ 
+      - name: updating frontend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          NAMESPACE: default
+          DEPLOYMENT_NAME: frontend
+          CONTAINER_NAME: frontend
+          IMAGE_REPO: ghcr.io/obadh-20/frontend
+        run: |
+          kubectl -n "${NAMESPACE}" set image deployment/"${DEPLOYMENT_NAME}" \
+            "${CONTAINER_NAME}"="${IMAGE_REPO}:${IMAGE_TAG}"
+ 
+          kubectl -n "${NAMESPACE}" rollout status deployment/"${DEPLOYMENT_NAME}"
+      - name: updating frontend image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          NAMESPACE: backend
+          DEPLOYMENT_NAME: backend-api
+          CONTAINER_NAME: backend
+          IMAGE_REPO: ghcr.io/obadh-20/backend
+        run: |
+          kubectl -n "${NAMESPACE}" set image deployment/"${DEPLOYMENT_NAME}" \
+            "${CONTAINER_NAME}"="${IMAGE_REPO}:${IMAGE_TAG}"
+ 
+          kubectl -n "${NAMESPACE}" rollout status deployment/"${DEPLOYMENT_NAME}"
