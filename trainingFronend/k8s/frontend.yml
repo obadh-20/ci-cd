@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: <+artifact.image>
+          image: <+artifacts.primary.image>
 
           ports:
             - containerPort: 80
