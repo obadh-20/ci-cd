@@ -19,8 +19,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: <+artifacts.primary.image>
-
+          image: {{.Values.image}}
           ports:
             - containerPort: 80
 
