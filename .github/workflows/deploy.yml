@@ -9,17 +9,19 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: task-app-dev-deployment
+  cancel-in-progress: true
+
 jobs:
   sonar_scan:
     name: SonarQube Scan
-
-    # This job executes on your laptop.
     runs-on:
       - self-hosted
       - linux
       - x64
 
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -36,7 +38,7 @@ jobs:
             --show-error \
             "${SONAR_HOST_URL}/api/system/status"
 
-      - name: Run SonarQube scan and check Quality Gate
+      - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -48,11 +50,7 @@ jobs:
 
   build-and-push:
     name: Build and Push Images
-
-    # Docker images are built only when SonarQube passes.
     needs: sonar_scan
-
-    # This continues running on a GitHub-hosted runner.
     runs-on: ubuntu-latest
 
     permissions:
@@ -60,8 +58,11 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -71,37 +72,31 @@ jobs:
           password: ${{ secrets.USER_TOKEN }}
 
       - name: Build and push backend image
-        run: |
-          docker build \
-            -t ghcr.io/${{ github.repository_owner }}/backend:${{ github.sha }} \
-            -t ghcr.io/${{ github.repository_owner }}/backend:latest \
-            ./trainingAppBackend
-
-          docker push \
-            ghcr.io/${{ github.repository_owner }}/backend:${{ github.sha }}
-
-          docker push \
-            ghcr.io/${{ github.repository_owner }}/backend:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: ./trainingAppBackend
+          push: true
+          tags: |
+            ghcr.io/obadh-20/backend:${{ github.sha }}
+            ghcr.io/obadh-20/backend:latest
 
       - name: Build and push frontend image
-        run: |
-          docker build \
-            --build-arg REACT_APP_API_URL=https://devops-2.sociumtech.com \
-            -t ghcr.io/${{ github.repository_owner }}/frontend:${{ github.sha }} \
-            -t ghcr.io/${{ github.repository_owner }}/frontend:latest \
-            ./trainingFronend
-
-          docker push \
-            ghcr.io/${{ github.repository_owner }}/frontend:${{ github.sha }}
-
-          docker push \
-            ghcr.io/${{ github.repository_owner }}/frontend:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: ./trainingFronend
+          push: true
+          build-args: |
+            REACT_APP_API_URL=https://devops-2.sociumtech.com
+          tags: |
+            ghcr.io/obadh-20/frontend:${{ github.sha }}
+            ghcr.io/obadh-20/frontend:latest
 
   deploy:
     name: Deploy to K3s
-
     needs: build-and-push
     runs-on: ubuntu-latest
+
+    timeout-minutes: 15
 
     steps:
       - name: Configure Kubeconfig
@@ -109,6 +104,18 @@ jobs:
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.DEV_KUBE_CONFIG }}
+
+      - name: Verify K3s connection
+        run: |
+          echo "Current Kubernetes context:"
+          kubectl config current-context
+
+          echo "Checking cluster connection:"
+          kubectl get nodes
+
+          echo "Checking target namespaces:"
+          kubectl get namespace frontend
+          kubectl get namespace backend
 
       - name: Update frontend image
         env:
@@ -118,6 +125,8 @@ jobs:
           CONTAINER_NAME: frontend
           IMAGE_REPO: ghcr.io/obadh-20/frontend
         run: |
+          set -euo pipefail
+
           kubectl -n "${NAMESPACE}" set image \
             deployment/"${DEPLOYMENT_NAME}" \
             "${CONTAINER_NAME}"="${IMAGE_REPO}:${IMAGE_TAG}"
@@ -125,6 +134,8 @@ jobs:
           kubectl -n "${NAMESPACE}" rollout status \
             deployment/"${DEPLOYMENT_NAME}" \
             --timeout=180s
+
+          echo "Frontend deployment completed successfully."
 
       - name: Update backend image
         env:
@@ -134,6 +145,8 @@ jobs:
           CONTAINER_NAME: backend
           IMAGE_REPO: ghcr.io/obadh-20/backend
         run: |
+          set -euo pipefail
+
           kubectl -n "${NAMESPACE}" set image \
             deployment/"${DEPLOYMENT_NAME}" \
             "${CONTAINER_NAME}"="${IMAGE_REPO}:${IMAGE_TAG}"
@@ -141,3 +154,13 @@ jobs:
           kubectl -n "${NAMESPACE}" rollout status \
             deployment/"${DEPLOYMENT_NAME}" \
             --timeout=180s
+
+          echo "Backend deployment completed successfully."
+
+      - name: Show deployed resources
+        run: |
+          echo "Frontend:"
+          kubectl get deployment,pods,service -n frontend -o wide
+
+          echo "Backend:"
+          kubectl get deployment,pods,service -n backend -o wide
