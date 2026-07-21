@@ -17,9 +17,7 @@ jobs:
   sonar_scan:
     name: SonarQube Scan
     runs-on:
-      - self-hosted
-      - linux
-      - x64
+      - ubuntu-latest
 
     timeout-minutes: 20
 
