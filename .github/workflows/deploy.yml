@@ -15,64 +15,52 @@ jobs:
   # ============================================================
   # 1. TEST AND SONARQUBE ANALYSIS
   # ============================================================
-  sonar_scan:
-    name: Test, analyze and check Quality Gate
+    sonar_scan:
+    name: Analyze Complete Repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
+  
     steps:
-      # Download the complete repository and Git history.
-      - name: Checkout repository
+      - name: Checkout complete repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      # Prepare Node.js for the frontend tests.
+  
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: trainingFronend/package-lock.json
-
-      # Install frontend dependencies exactly from package-lock.json.
+  
       - name: Install frontend dependencies
         run: npm ci --prefix trainingFronend
-
-      # Run frontend tests and generate the LCOV coverage report.
-      - name: Run frontend tests with coverage
+  
+      - name: Run frontend tests and generate coverage
         run: |
           CI=true npm --prefix trainingFronend test -- \
             --watchAll=false \
             --coverage \
             --passWithNoTests
-
-      # Confirm that GitHub's runner can reach the remote SonarQube server.
+  
       - name: Verify SonarQube connection
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           set -euo pipefail
-
-          echo "Checking SonarQube server..."
-
+  
           curl \
             --fail \
             --silent \
             --show-error \
             "${SONAR_HOST_URL}/api/system/status"
-
-          echo
-          echo "SonarQube server is reachable."
-
-      # Analyze the source code and upload the report to SonarQube.
-      - name: Run SonarQube analysis
+  
+      - name: Analyze complete repository
         uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
-      # Wait for SonarQube to process the report and return the Quality Gate.
+  
       - name: Check SonarQube Quality Gate
         id: sonarqube-quality-gate
         uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
@@ -82,11 +70,10 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
+  
       - name: Show Quality Gate result
         run: |
           echo "Quality Gate status: ${{ steps.sonarqube-quality-gate.outputs.quality-gate-status }}"
-
   # ============================================================
   # 2. BUILD AND PUSH IMAGES
   # ============================================================
