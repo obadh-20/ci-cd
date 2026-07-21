@@ -204,7 +204,7 @@ jobs:
       - name: Update frontend image
         env:
           IMAGE_TAG: ${{ github.sha }}
-          NAMESPACE: frontend
+          NAMESPACE: backend
           DEPLOYMENT_NAME: frontend
           CONTAINER_NAME: frontend
           IMAGE_REPO: ghcr.io/obadh-20/frontend
