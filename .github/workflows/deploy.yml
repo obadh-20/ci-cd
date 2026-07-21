@@ -5,26 +5,29 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 permissions:
   contents: read
   packages: write
 
 jobs:
   # ============================================================
-  # 1. SONARQUBE ANALYSIS
+  # 1. TEST AND SONARQUBE ANALYSIS
   # ============================================================
   sonar_scan:
-    name: SonarQube Scan
+    name: Test, analyze and check Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
+      # Download the complete repository and Git history.
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v5
         with:
-          # SonarQube works better with complete Git history.
           fetch-depth: 0
 
+      # Prepare Node.js for the frontend tests.
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -32,45 +35,67 @@ jobs:
           cache: npm
           cache-dependency-path: trainingFronend/package-lock.json
 
+      # Install frontend dependencies exactly from package-lock.json.
       - name: Install frontend dependencies
         run: npm ci --prefix trainingFronend
 
-      - name: Run frontend tests
+      # Run frontend tests and generate the LCOV coverage report.
+      - name: Run frontend tests with coverage
         run: |
           CI=true npm --prefix trainingFronend test -- \
             --watchAll=false \
             --coverage \
             --passWithNoTests
 
+      # Confirm that GitHub's runner can reach the remote SonarQube server.
       - name: Verify SonarQube connection
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          curl --fail \
+          set -euo pipefail
+
+          echo "Checking SonarQube server..."
+
+          curl \
+            --fail \
             --silent \
             --show-error \
             "${SONAR_HOST_URL}/api/system/status"
 
+          echo
+          echo "SonarQube server is reachable."
+
+      # Analyze the source code and upload the report to SonarQube.
       - name: Run SonarQube analysis
         uses: SonarSource/sonarqube-scan-action@v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # Wait for SonarQube to process the report and return the Quality Gate.
+      - name: Check SonarQube Quality Gate
+        id: sonarqube-quality-gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
+        timeout-minutes: 5
         with:
-          args: >
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
+          pollingTimeoutSec: 300
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: Show Quality Gate result
+        run: |
+          echo "Quality Gate status: ${{ steps.sonarqube-quality-gate.outputs.quality-gate-status }}"
 
   # ============================================================
   # 2. BUILD AND PUSH IMAGES
   # ============================================================
   build-and-push:
     name: Build and Push Images
-
-    # Do not build anything unless SonarQube passes.
-    needs: sonar_scan
-
     runs-on: ubuntu-latest
+
+    # This job starts only when tests, analysis and Quality Gate pass.
+    needs: sonar_scan
 
     permissions:
       contents: read
@@ -78,20 +103,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v5
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.USER_TOKEN }}
 
       - name: Build and push backend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./trainingAppBackend
           push: true
@@ -100,7 +125,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/backend:latest
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./trainingFronend
           push: true
@@ -115,12 +140,11 @@ jobs:
   # ============================================================
   deploy:
     name: Deploy to K3s
-
-    # Do not deploy unless images were built successfully.
-    needs: build-and-push
-
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Deployment starts only after both images are built and pushed.
+    needs: build-and-push
 
     steps:
       - name: Configure Kubeconfig
@@ -133,9 +157,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Current Kubernetes context:"
           kubectl config current-context
+
+          echo "Cluster nodes:"
           kubectl get nodes
+
+          echo "Checking frontend deployment:"
           kubectl get deployment frontend -n frontend
+
+          echo "Checking backend deployment:"
           kubectl get deployment backend-api -n backend
 
       - name: Update frontend image
@@ -147,6 +178,9 @@ jobs:
           IMAGE_REPO: ghcr.io/obadh-20/frontend
         run: |
           set -euo pipefail
+
+          echo "Deploying frontend image:"
+          echo "${IMAGE_REPO}:${IMAGE_TAG}"
 
           kubectl -n "${NAMESPACE}" set image \
             deployment/"${DEPLOYMENT_NAME}" \
@@ -168,6 +202,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "Deploying backend image:"
+          echo "${IMAGE_REPO}:${IMAGE_TAG}"
+
           kubectl -n "${NAMESPACE}" set image \
             deployment/"${DEPLOYMENT_NAME}" \
             "${CONTAINER_NAME}"="${IMAGE_REPO}:${IMAGE_TAG}"
@@ -186,6 +223,7 @@ jobs:
             -n frontend \
             -o wide || true
 
+          echo
           echo "Backend resources:"
           kubectl get deployment,pods,service \
             -n backend \
