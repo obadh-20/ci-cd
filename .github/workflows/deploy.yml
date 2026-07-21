@@ -193,7 +193,7 @@ jobs:
           kubectl get nodes
 
           echo "Frontend deployment:"
-          kubectl get deployment frontend -n frontend
+          kubectl get deployment frontend -n backend
 
           echo "Backend deployment:"
           kubectl get deployment backend-api -n backend
