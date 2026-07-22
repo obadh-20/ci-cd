@@ -1,0 +1,12 @@
+name: backend-api
+namespace: backend
+
+replicas: 1
+
+image: <+artifacts.primary.image>
+
+containerPort: 3002
+servicePort: 3002
+
+imagePullSecret: ghcr-secret
+secretName: backend-secrets
