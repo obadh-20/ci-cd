@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: frontend
   namespace: frontend
+  labels:
+    app: frontend
 
 spec:
   replicas: 1
@@ -10,19 +12,24 @@ spec:
   selector:
     matchLabels:
       app: frontend
+      harness.io/track: stable
 
   template:
     metadata:
       labels:
         app: frontend
+        harness.io/track: stable
 
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+
       containers:
         - name: frontend
-          image: {{.Values.image}}
+          image: <+artifacts.primary.image>
           ports:
-            - containerPort: 80
-
+            - name: http
+              containerPort: 80
 ---
 apiVersion: v1
 kind: Service
